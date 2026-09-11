@@ -9,13 +9,23 @@ class LLMClient:
     def __init__(self):
         # Assumes GEMINI_API_KEY is in environment
         self.client = genai.Client()
-        self.candidate_models = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.8-flash']
+        self.candidate_models = ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']
         self.model_name = self.candidate_models[0]
 
     def get_action(self, prompt: str, screenshot: Image.Image, previous_actions: list) -> dict:
-        """Send the screenshot and prompt to Gemini and get a tool call."""
+        """Send the screenshot and prompt to Gemini and get tool calls."""
         
-        # We define the tools schema manually for Google GenAI
+        tool_launch_app = types.FunctionDeclaration(
+            name='launch_app',
+            description='Fastest way to open any Windows program (e.g. "notepad", "calc", "chrome"). Automatically presses Win, types the app name, and hits Enter in 1 second.',
+            parameters={
+                'type': 'OBJECT',
+                'properties': {
+                    'app_name': {'type': 'STRING', 'description': 'The name of the application to open.'}
+                },
+                'required': ['app_name']
+            }
+        )
         tool_click = types.FunctionDeclaration(
             name='click',
             description='Move mouse to coordinates (x, y) and click.',
@@ -99,68 +109,43 @@ class LLMClient:
                 'required': ['app_name']
             }
         )
-        tool_open_browser = types.FunctionDeclaration(
-            name='open_browser',
-            description='Opens the default web browser directly to a specified URL (e.g. "https://www.google.com" or "https://en.wikipedia.org").',
+        tool_open_url = types.FunctionDeclaration(
+            name='open_url',
+            description='Directly open a website or search URL in Chrome or default browser. Can open YouTube searches directly (e.g. "https://www.youtube.com/results?search_query=...").',
             parameters={
                 'type': 'OBJECT',
                 'properties': {
-                    'url': {'type': 'STRING'}
+                    'url': {'type': 'STRING', 'description': 'Full URL to open.'},
+                    'browser': {'type': 'STRING', 'description': 'Browser name, default is chrome.'}
                 },
                 'required': ['url']
             }
         )
-        tool_browser_navigate = types.FunctionDeclaration(
-            name='browser_navigate',
-            description='Navigates the currently active browser to a new URL by focusing the address bar (Ctrl+L), typing the URL, and pressing Enter.',
+        tool_focus_address_bar = types.FunctionDeclaration(
+            name='focus_address_bar',
+            description='Press Ctrl+L in browser to highlight the address bar before typing a new URL or search query.',
+            parameters={'type': 'OBJECT', 'properties': {}}
+        )
+        tool_check_window_title_contains = types.FunctionDeclaration(
+            name='check_window_title_contains',
+            description='Check if any open window title matches a keyword (e.g. "YouTube", video title, "Chrome").',
             parameters={
                 'type': 'OBJECT',
                 'properties': {
-                    'url': {'type': 'STRING'}
+                    'keyword': {'type': 'STRING'}
                 },
-                'required': ['url']
+                'required': ['keyword']
             }
         )
-        tool_browser_new_tab = types.FunctionDeclaration(
-            name='browser_new_tab',
-            description='Opens a new browser tab with Ctrl+T and optionally navigates to a URL.',
-            parameters={
-                'type': 'OBJECT',
-                'properties': {
-                    'url': {'type': 'STRING'}
-                }
-            }
+        tool_maximize_window = types.FunctionDeclaration(
+            name='maximize_window',
+            description='Maximizes the browser or active window (Win+Up) so screen coordinates are full screen.',
+            parameters={'type': 'OBJECT', 'properties': {}}
         )
-        tool_browser_close_tab = types.FunctionDeclaration(
-            name='browser_close_tab',
-            description='Closes the active browser tab with Ctrl+W.',
-            parameters={'type': 'OBJECT'}
-        )
-        tool_click_and_type = types.FunctionDeclaration(
-            name='click_and_type',
-            description='Clicks on an input field/search bar, clears any existing text, types the new text, and optionally presses Enter.',
-            parameters={
-                'type': 'OBJECT',
-                'properties': {
-                    'x': {'type': 'INTEGER'},
-                    'y': {'type': 'INTEGER'},
-                    'text': {'type': 'STRING'},
-                    'press_enter': {'type': 'BOOLEAN', 'description': 'Whether to press Enter after typing.'}
-                },
-                'required': ['x', 'y', 'text']
-            }
-        )
-        tool_browser_scroll = types.FunctionDeclaration(
-            name='browser_scroll',
-            description='Scrolls the active web page "down" or "up" by a pixel amount (default 400).',
-            parameters={
-                'type': 'OBJECT',
-                'properties': {
-                    'direction': {'type': 'STRING', 'enum': ['down', 'up']},
-                    'amount': {'type': 'INTEGER'}
-                },
-                'required': ['direction']
-            }
+        tool_click_first_video = types.FunctionDeclaration(
+            name='click_first_video',
+            description='Smoothly moves cursor to the first YouTube video result and clicks it to begin playback.',
+            parameters={'type': 'OBJECT', 'properties': {}}
         )
         tool_done = types.FunctionDeclaration(
             name='done',
@@ -175,26 +160,25 @@ class LLMClient:
         )
 
         tools = types.Tool(function_declarations=[
-            tool_click, tool_double_click, tool_type_text, tool_press_key, tool_hotkey, tool_wait, 
-            tool_check_app_opened, tool_open_browser, tool_browser_navigate, tool_browser_new_tab, 
-            tool_browser_close_tab, tool_click_and_type, tool_browser_scroll, tool_done
+            tool_open_url, tool_click_first_video, tool_maximize_window, tool_focus_address_bar, tool_check_window_title_contains,
+            tool_launch_app, tool_click, tool_double_click, tool_type_text, tool_press_key, tool_hotkey, tool_wait, tool_check_app_opened, tool_done
         ])
         
         system_instruction = (
-            "You are an expert desktop and browser automation agent on Windows. You are given screenshots and a user goal.\n"
-            "BROWSER AUTOMATION RULES:\n"
-            "1. To open a website or launch a browser, use `open_browser(url=...)` or `browser_navigate(url=...)`. "
-            "This directly opens the browser and navigates without manual address bar clicking.\n"
-            "2. To search or fill web form inputs, use `click_and_type(x, y, text, press_enter=True)`. "
-            "It automatically focuses the input, clears placeholder text, types the query, and presses Enter!\n"
-            "3. To scroll down web pages to read more or locate links, use `browser_scroll(direction='down')`.\n"
-            "4. To open multiple tabs, use `browser_new_tab(url=...)` and close them with `browser_close_tab()`.\n"
-            "5. To click web links or buttons, use `click(x, y)`.\n"
-            "\n"
-            "GENERAL RULES:\n"
-            "1. When opening an app, ensure it actually launches before calling `done`. Use `check_app_opened` or verify the window in the screenshot.\n"
-            "2. When searching in Start menu or Windows Search, always press Enter or click the result.\n"
-            "3. Take one action at a time and carefully inspect the new screenshot before deciding the next step."
+            "You are an expert Windows and browser desktop automation agent.\n"
+            "CRITICAL RULES:\n"
+            "1. WEBSITES & MEDIA (YouTube, Google, etc.):\n"
+            "   - When asked to open a website or search on YouTube (e.g., 'open youtube and search <song> and play it'):\n"
+            "     ALWAYS use open_url(url='https://www.youtube.com/results?search_query=<encoded_query>') DIRECTLY! "
+            "This opens Chrome and navigates directly to the exact search results in 1 step!\n"
+            "   - If typing a URL into an already open browser, ALWAYS call focus_address_bar() first before typing!\n"
+            "2. PLAYING VIDEOS:\n"
+            "   - Once on the search results page, look at the screenshot and click the FIRST video title/thumbnail (usually around x: 450-550, y: 250-320).\n"
+            "   - Wait 2 seconds for the video to begin playing.\n"
+            "3. SELF-VERIFICATION IS STRICTLY MANDATORY:\n"
+            "   - NEVER call 'done' until you have actually verified that the song or video is playing (by checking the video player on screen or calling check_window_title_contains)!\n"
+            "   - If the video is not playing yet, click on the video result item or press spacebar to play.\n"
+            "4. Execute actions cleanly and promptly."
         )
 
         # Format history
@@ -206,50 +190,43 @@ class LLMClient:
 
         user_content = f"Goal: {prompt}\n{history_text}\nWhat is the next action?"
 
-        # Optimize screenshot for lightning-fast network transmission (~90% smaller payload)
+        # High-speed compressed JPEG encoding
         buf = io.BytesIO()
-        screenshot.convert('RGB').save(buf, format='JPEG', quality=80)
-        buf.seek(0)
-        opt_screenshot = Image.open(buf)
+        screenshot.save(buf, format='JPEG', quality=80)
+        img_part = types.Part.from_bytes(data=buf.getvalue(), mime_type='image/jpeg')
 
         response = None
         last_error = None
         for model in self.candidate_models:
             try:
-                import time
-                t0 = time.time()
                 response = self.client.models.generate_content(
                     model=model,
-                    contents=[opt_screenshot, user_content],
+                    contents=[img_part, user_content],
                     config=types.GenerateContentConfig(
                         tools=[tools],
                         system_instruction=system_instruction,
                         temperature=0.0
                     )
                 )
-                dt = round(time.time() - t0, 2)
                 self.model_name = model
-                print(f"Model ({model}) responded in {dt}s")
                 break
             except Exception as e:
                 last_error = e
                 continue
 
         if response is None:
-            return {'name': 'error', 'args': {'message': f'All models failed. Last error: {last_error}'}}
+            return {'type': 'error', 'message': f'All models failed. Last error: {last_error}'}
 
         if response.function_calls:
-            fc = response.function_calls[0]
-            # Handle possible differences in argument structure
-            args = {k: v for k, v in fc.args.items()} if fc.args else {}
-            return {
-                'name': fc.name,
-                'args': args
-            }
+            actions = []
+            for fc in response.function_calls:
+                args = {k: v for k, v in fc.args.items()} if fc.args else {}
+                actions.append({'name': fc.name, 'args': args})
+            return {'type': 'actions', 'actions': actions}
         elif response.text:
             return {
-                'name': 'message',
-                'args': {'text': response.text}
+                'type': 'message',
+                'text': response.text
             }
         else:
-            return {'name': 'error', 'args': {'message': 'No tool call or text returned.'}}
+            return {'type': 'error', 'message': 'No tool call or text returned.'}

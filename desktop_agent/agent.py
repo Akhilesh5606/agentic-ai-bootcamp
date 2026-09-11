@@ -33,89 +33,85 @@ class DesktopAgent:
             screenshot = self.capture_screen()
             
             print("Thinking...")
-            action = self.client.get_action(goal, screenshot, self.history)
+            action_res = self.client.get_action(goal, screenshot, self.history)
+            res_type = action_res.get('type')
             
-            name = action.get('name')
-            args = action.get('args', {})
-            
-            print(f"\nModel decided to call: {name}({args})")
-            
-            if name == 'message':
-                print(f"Message from model: {args.get('text')}")
-                self.history.append(f"Model message: {args.get('text')}")
+            if res_type == 'message':
+                msg = action_res.get('text')
+                print(f"Message from model: {msg}")
+                self.history.append(f"Model message: {msg}")
                 continue
-            elif name == 'error':
-                print(f"Error: {args.get('message')}")
+            elif res_type == 'error':
+                print(f"Error: {action_res.get('message')}")
                 break
 
-            # Execute directly without confirmation
+            actions = action_res.get('actions', [])
+            should_break = False
 
-            # Execute
-            result = ""
-            if name == 'click':
-                result = tools.click(args.get('x'), args.get('y'))
-            elif name == 'double_click':
-                result = tools.double_click(args.get('x'), args.get('y'))
-            elif name == 'type_text':
-                result = tools.type_text(args.get('text'), press_enter=args.get('press_enter', False))
-            elif name == 'press_key':
-                result = tools.press_key(args.get('key'))
-            elif name == 'hotkey':
-                result = tools.hotkey(args.get('keys', []))
-            elif name == 'wait':
-                result = tools.wait(args.get('seconds', 1.0))
-            elif name == 'check_app_opened':
-                result = tools.check_app_opened(args.get('app_name', ''))
-            elif name == 'open_browser':
-                result = tools.open_browser(args.get('url', 'https://www.google.com'))
-            elif name == 'browser_navigate':
-                result = tools.browser_navigate(args.get('url', ''))
-            elif name == 'browser_new_tab':
-                result = tools.browser_new_tab(args.get('url', ''))
-            elif name == 'browser_close_tab':
-                result = tools.browser_close_tab()
-            elif name == 'click_and_type':
-                result = tools.click_and_type(
-                    x=args.get('x'),
-                    y=args.get('y'),
-                    text=args.get('text', ''),
-                    clear_first=args.get('clear_first', True),
-                    press_enter=args.get('press_enter', False)
-                )
-            elif name == 'browser_scroll':
-                result = tools.browser_scroll(
-                    direction=args.get('direction', 'down'),
-                    amount=args.get('amount', 400)
-                )
-            elif name == 'done':
-                # Automated verification safeguard for "open" goals
-                goal_lower = goal.lower()
-                detected_app = None
-                for app in ['notepad', 'calculator', 'calc', 'chrome', 'msedge', 'edge', 'cmd', 'powershell', 'word', 'excel', 'settings']:
-                    if app in goal_lower:
-                        detected_app = 'calculator' if app == 'calc' else app
-                        break
+            for action in actions:
+                name = action.get('name')
+                args = action.get('args', {})
+                print(f"\nExecuting action: {name}({args})")
 
-                if detected_app:
-                    status = tools.check_app_opened(detected_app)
-                    print(f"Self-verification check for '{detected_app}': {status}")
-                    if "NOT RUNNING" in status:
-                        print(f"Warning: '{detected_app}' is not yet running! Pressing Enter and waiting to launch...")
-                        tools.press_key('enter')
-                        tools.wait(2.0)
-                        status_retry = tools.check_app_opened(detected_app)
-                        if "NOT RUNNING" in status_retry:
-                            self.history.append(f"Verification: '{detected_app}' is not running yet. Make sure to press Enter or click the result.")
-                            continue
+                if name == 'open_url':
+                    result = tools.open_url(args.get('url', ''), browser=args.get('browser', 'chrome'))
+                elif name == 'maximize_window':
+                    result = tools.maximize_window()
+                elif name == 'click_first_video':
+                    result = tools.click_first_video()
+                elif name == 'focus_address_bar':
+                    result = tools.focus_address_bar()
+                elif name == 'check_window_title_contains':
+                    result = tools.check_window_title_contains(args.get('keyword', ''))
+                elif name == 'launch_app':
+                    result = tools.launch_app(args.get('app_name', ''))
+                elif name == 'click':
+                    result = tools.click(args.get('x'), args.get('y'))
+                elif name == 'double_click':
+                    result = tools.double_click(args.get('x'), args.get('y'))
+                elif name == 'type_text':
+                    result = tools.type_text(args.get('text'), press_enter=args.get('press_enter', False))
+                elif name == 'press_key':
+                    result = tools.press_key(args.get('key'))
+                elif name == 'hotkey':
+                    result = tools.hotkey(args.get('keys', []))
+                elif name == 'wait':
+                    result = tools.wait(args.get('seconds', 0.5))
+                elif name == 'check_app_opened':
+                    result = tools.check_app_opened(args.get('app_name', ''))
+                elif name == 'done':
+                    # Automated verification safeguard for "open" goals
+                    goal_lower = goal.lower()
+                    detected_app = None
+                    for app in ['notepad', 'calculator', 'calc', 'chrome', 'msedge', 'edge', 'cmd', 'powershell', 'word', 'excel', 'settings']:
+                        if app in goal_lower:
+                            detected_app = 'calculator' if app == 'calc' else app
+                            break
 
-                result = tools.done(args.get('message', ''))
-                print(f"Goal verified and achieved: {result}")
+                    if detected_app:
+                        status = tools.check_app_opened(detected_app)
+                        print(f"Self-verification check for '{detected_app}': {status}")
+                        if "NOT RUNNING" in status:
+                            print(f"Warning: '{detected_app}' is not yet running! Pressing Enter and waiting...")
+                            tools.press_key('enter')
+                            tools.wait(1.0)
+                            status_retry = tools.check_app_opened(detected_app)
+                            if "NOT RUNNING" in status_retry:
+                                self.history.append(f"Verification: '{detected_app}' is not running yet.")
+                                continue
+
+                    result = tools.done(args.get('message', ''))
+                    print(f"Goal verified and achieved: {result}")
+                    should_break = True
+                    break
+                else:
+                    result = f"Unknown tool: {name}"
+
+                print(f"Action result: {result}")
+                self.history.append(f"{name}({args}) -> {result}")
+
+            if should_break:
                 break
-            else:
-                result = f"Unknown tool: {name}"
 
-            print(f"Action result: {result}")
-            self.history.append(f"{name}({args}) -> {result}")
-
-            # Pause briefly to let UI update before next screen capture
-            time.sleep(0.4)
+            # Snappy delay before next screen capture
+            time.sleep(0.5)

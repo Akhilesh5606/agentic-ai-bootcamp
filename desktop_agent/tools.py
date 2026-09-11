@@ -1,25 +1,56 @@
 import pyautogui
 import time
+import ctypes
 
-# Safely configure PyAutoGUI
+# Enable Windows Per-Monitor DPI Awareness so screen coordinates match 1:1
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    pass
+
+# Safely configure PyAutoGUI - smooth and responsive
 pyautogui.FAILSAFE = True
-pyautogui.PAUSE = 0.1
+pyautogui.PAUSE = 0.05
+
+def launch_app(app_name: str) -> str:
+    """Instantly open any Windows application via Start menu search and launch it directly."""
+    try:
+        pyautogui.press('win')
+        time.sleep(0.3)
+        pyautogui.typewrite(app_name, interval=0.01)
+        time.sleep(0.3)
+        pyautogui.press('enter')
+        time.sleep(1.0)
+        return f"Launched application: '{app_name}'"
+    except Exception as e:
+        return f"Error launching app: {e}"
 
 def click(x: int, y: int) -> str:
-    """Move the mouse to coordinates (x, y) and click."""
+    """Smoothly moves the mouse to coordinates (x, y) with natural deceleration and clicks."""
     try:
-        pyautogui.moveTo(x, y, duration=0.15)
+        screen_w, screen_h = pyautogui.size()
+        target_x = max(0, min(int(x), screen_w - 1))
+        target_y = max(0, min(int(y), screen_h - 1))
+        
+        # Smooth natural curve to target
+        pyautogui.moveTo(target_x, target_y, duration=0.35, tween=pyautogui.easeOutQuad)
+        time.sleep(0.08)  # Let browser hover effects settle
         pyautogui.click()
-        return f"Clicked at ({x}, {y})"
+        return f"Smoothly clicked at ({target_x}, {target_y})"
     except Exception as e:
         return f"Error clicking: {e}"
 
 def double_click(x: int, y: int) -> str:
-    """Move the mouse to coordinates (x, y) and double click."""
+    """Smoothly moves the mouse to coordinates (x, y) and double clicks."""
     try:
-        pyautogui.moveTo(x, y, duration=0.15)
+        screen_w, screen_h = pyautogui.size()
+        target_x = max(0, min(int(x), screen_w - 1))
+        target_y = max(0, min(int(y), screen_h - 1))
+        
+        pyautogui.moveTo(target_x, target_y, duration=0.35, tween=pyautogui.easeOutQuad)
+        time.sleep(0.08)
         pyautogui.doubleClick()
-        return f"Double clicked at ({x}, {y})"
+        return f"Smoothly double clicked at ({target_x}, {target_y})"
     except Exception as e:
         return f"Error double clicking: {e}"
 
@@ -28,7 +59,7 @@ def type_text(text: str, press_enter: bool = False) -> str:
     try:
         pyautogui.typewrite(text, interval=0.01)
         if press_enter:
-            time.sleep(0.15)
+            time.sleep(0.2)
             pyautogui.press('enter')
             return f"Typed '{text}' and pressed Enter"
         return f"Typed: '{text}'"
@@ -67,86 +98,6 @@ def scroll(clicks: int) -> str:
     except Exception as e:
         return f"Error scrolling: {e}"
 
-def open_browser(url: str = "https://www.google.com") -> str:
-    """Opens the default web browser directly to the specified URL."""
-    import webbrowser
-    try:
-        target_url = url if url.startswith("http") else f"https://{url}"
-        webbrowser.open(target_url)
-        time.sleep(2.0)  # Wait for browser window to launch and render
-        return f"Opened browser to '{target_url}'"
-    except Exception as e:
-        return f"Error opening browser: {e}"
-
-def browser_navigate(url: str) -> str:
-    """Focuses the browser address bar (Ctrl+L), types the URL, and presses Enter."""
-    try:
-        pyautogui.hotkey('ctrl', 'l')
-        time.sleep(0.2)
-        target_url = url if url.startswith("http") else f"https://{url}"
-        pyautogui.typewrite(target_url, interval=0.01)
-        time.sleep(0.15)
-        pyautogui.press('enter')
-        time.sleep(2.0)  # Wait for page to load
-        return f"Navigated to '{target_url}'"
-    except Exception as e:
-        return f"Error navigating: {e}"
-
-def browser_new_tab(url: str = "") -> str:
-    """Opens a new browser tab with Ctrl+T and optionally navigates to a URL."""
-    try:
-        pyautogui.hotkey('ctrl', 't')
-        time.sleep(0.4)
-        if url:
-            target_url = url if url.startswith("http") else f"https://{url}"
-            pyautogui.typewrite(target_url, interval=0.01)
-            time.sleep(0.1)
-            pyautogui.press('enter')
-            time.sleep(2.0)
-            return f"Opened new tab and navigated to '{target_url}'"
-        return "Opened new blank tab"
-    except Exception as e:
-        return f"Error opening new tab: {e}"
-
-def browser_close_tab() -> str:
-    """Closes the current browser tab with Ctrl+W."""
-    try:
-        pyautogui.hotkey('ctrl', 'w')
-        time.sleep(0.3)
-        return "Closed current tab"
-    except Exception as e:
-        return f"Error closing tab: {e}"
-
-def click_and_type(x: int, y: int, text: str, clear_first: bool = True, press_enter: bool = False) -> str:
-    """Clicks on an input field/search bar, optionally clears it, types text, and optionally presses Enter."""
-    try:
-        pyautogui.moveTo(x, y, duration=0.15)
-        pyautogui.click()
-        time.sleep(0.2)
-        if clear_first:
-            pyautogui.hotkey('ctrl', 'a')
-            time.sleep(0.05)
-            pyautogui.press('backspace')
-        pyautogui.typewrite(text, interval=0.01)
-        if press_enter:
-            time.sleep(0.15)
-            pyautogui.press('enter')
-            time.sleep(1.5)  # Wait for search results or form submission
-            return f"Clicked ({x}, {y}), typed '{text}', and pressed Enter"
-        return f"Clicked ({x}, {y}) and typed '{text}'"
-    except Exception as e:
-        return f"Error in click_and_type: {e}"
-
-def browser_scroll(direction: str = "down", amount: int = 400) -> str:
-    """Scrolls the current web page up or down to reveal more content."""
-    try:
-        clicks = -abs(amount) if direction.lower() == "down" else abs(amount)
-        pyautogui.scroll(clicks)
-        time.sleep(0.5)
-        return f"Scrolled page {direction} by {amount}"
-    except Exception as e:
-        return f"Error scrolling page: {e}"
-
 def check_app_opened(app_name: str) -> str:
     """Checks whether an application process is running (e.g., 'notepad', 'calc', 'calculator', 'chrome', etc.)."""
     import subprocess
@@ -164,6 +115,66 @@ def check_app_opened(app_name: str) -> str:
             return f"NOT RUNNING: Application '{app_name}' is NOT running yet."
     except Exception as e:
         return f"Error checking process: {e}"
+
+def open_url(url: str, browser: str = "chrome") -> str:
+    """Open a URL directly in Chrome or default browser. Can open YouTube searches directly."""
+    import subprocess
+    import webbrowser
+    if not url.startswith('http://') and not url.startswith('https://'):
+        url = 'https://' + url
+    try:
+        subprocess.Popen(f'start {browser} "{url}"', shell=True)
+        time.sleep(2.0)
+        return f"Opened in {browser}: {url}"
+    except Exception:
+        webbrowser.open(url)
+        time.sleep(2.0)
+        return f"Opened in browser: {url}"
+
+def focus_address_bar() -> str:
+    """Presses Ctrl+L to immediately focus and highlight the browser address bar."""
+    try:
+        pyautogui.hotkey('ctrl', 'l')
+        time.sleep(0.3)
+        return "Focused browser address bar with Ctrl+L"
+    except Exception as e:
+        return f"Error focusing address bar: {e}"
+
+def check_window_title_contains(keyword: str) -> str:
+    """Checks whether any open window contains the keyword in its title."""
+    import pygetwindow as gw
+    try:
+        matches = [t for t in gw.getAllTitles() if keyword.lower() in t.lower()]
+        if matches:
+            return f"VERIFIED: Window found with title: '{matches[0]}'"
+        return f"NOT FOUND: No open window title matching '{keyword}'"
+    except Exception as e:
+        return f"Error checking window title: {e}"
+
+def maximize_window() -> str:
+    """Maximizes the active window (Win + Up Arrow) so browser coordinates are standard full screen."""
+    try:
+        pyautogui.hotkey('win', 'up')
+        time.sleep(0.4)
+        return "Maximized active window"
+    except Exception as e:
+        return f"Error maximizing window: {e}"
+
+def click_first_video() -> str:
+    """Clicks the first video result card on YouTube search results and starts playback."""
+    try:
+        # First video thumbnail center in full screen YouTube is around (480, 270)
+        screen_w, screen_h = pyautogui.size()
+        target_x = int(screen_w * 0.25) if screen_w < 1920 else 490
+        target_y = int(screen_h * 0.26) if screen_h < 1080 else 275
+        
+        pyautogui.moveTo(target_x, target_y, duration=0.4, tween=pyautogui.easeOutQuad)
+        time.sleep(0.1)
+        pyautogui.click()
+        time.sleep(1.5)
+        return f"Clicked first video result at ({target_x}, {target_y})"
+    except Exception as e:
+        return f"Error clicking first video: {e}"
 
 def done(message: str = "Task completed") -> str:
     """Call this when the objective is achieved."""
