@@ -209,15 +209,64 @@ def main(db_path:str):
     mcp = Server("invoice")
     @mcp.list_tools()
     async def handle_list_tools() -> list[types.Tool]:
-        ## TODO
-        ## return schema for tools
-        pass
+        return [
+            types.Tool(
+                name="invoice_refund",
+                description="Refund an invoice or specific invoice lines by deleting them from the database.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "invoice_id": {"type": "integer", "description": "The ID of the invoice to refund completely."},
+                        "invoice_line_ids": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "description": "A list of invoice line IDs to refund."
+                        },
+                        "mock": {"type": "boolean", "description": "If True, just simulate the refund without deleting."}
+                    }
+                }
+            ),
+            types.Tool(
+                name="invoice_lookup",
+                description="Lookup invoice lines for a customer using their details.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "customer_first_name": {"type": "string"},
+                        "customer_last_name": {"type": "string"},
+                        "customer_phone": {"type": "string"},
+                        "track_name": {"type": "string"},
+                        "album_title": {"type": "string"},
+                        "artist_name": {"type": "string"},
+                        "purchase_date_iso_8601": {"type": "string"}
+                    },
+                    "required": ["customer_first_name", "customer_last_name", "customer_phone"]
+                }
+            )
+        ]
 
     @mcp.call_tool()
     async def handle_call_tool(name: str, args: dict[str, Any] | None):
-        ## TODO
-        ## implement tool calling logic
-        pass
+        if not args:
+            args = {}
+        if name == "invoice_refund":
+            return invoice._invoice_refund(
+                invoice_id=args.get("invoice_id"),
+                invoice_line_ids=args.get("invoice_line_ids"),
+                mock=args.get("mock", True)
+            )
+        elif name == "invoice_lookup":
+            return invoice._invoice_lookup(
+                customer_first_name=args.get("customer_first_name"),
+                customer_last_name=args.get("customer_last_name"),
+                customer_phone=args.get("customer_phone"),
+                track_name=args.get("track_name"),
+                album_title=args.get("album_title"),
+                artist_name=args.get("artist_name"),
+                purchase_date_iso_8601=args.get("purchase_date_iso_8601")
+            )
+        else:
+            raise ValueError(f"Unknown tool: {name}")
     
     # Create the session manager with true stateless mode
     session_manager = StreamableHTTPSessionManager(

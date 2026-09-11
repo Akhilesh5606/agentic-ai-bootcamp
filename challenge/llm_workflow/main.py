@@ -95,14 +95,40 @@ async def refund_agent(state:State,config: RunnableConfig):
     mcp_client = MCPHTTPCLIENT(mcp_server_url)
     await mcp_client.connect()
 
-    ## TODO
-    ## list tools, format tools to openai function calling schema, get response from NVIDIA NIM/LLM
+    tools_list = await mcp_client.list_tools()
+    openai_tools = []
+    for t in tools_list.tools:
+        openai_tools.append({
+            "type": "function",
+            "function": {
+                "name": t.name,
+                "description": t.description,
+                "parameters": t.inputSchema
+            }
+        })
+
+    response = await openAI_client.chat.completions.create(
+        model=os.environ.get("MODEL_ID"),
+        messages=messages,
+        tools=openai_tools,
+        tool_choice="auto",
+        temperature=0
+    )
+    stop_reason = response.choices[0].finish_reason
 
     if stop_reason == 'tool_calls':
         for tool_call in response.choices[0].message.tool_calls:
             
-            ## TODO
-            ## Implement tool calling
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments)
+            tool_result = await mcp_client.call_tool(tool_name, tool_args)
+            result = tool_result.content[0].text
+            tool_message = {
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "name": tool_name,
+                "content": result
+            }
             
             if tool_name == 'invoice_refund':
                 content = f"You have been refunded a total of: ${result}. Is there anything else I can help with?"
@@ -184,8 +210,15 @@ def create_workflow(memory):
     # Agent definition
     workflow = StateGraph(State)
     
-    ## TODO
-    ## Define nodes and edges for graph
+    workflow.add_node("intent_classifier", intent_classifier)
+    workflow.add_node("qna_agent", qna_agent)
+    workflow.add_node("refund_agent", refund_agent)
+    workflow.add_node("compile_followup", compile_followup)
+
+    workflow.set_entry_point("intent_classifier")
+    workflow.add_edge("qna_agent", "compile_followup")
+    workflow.add_edge("refund_agent", "compile_followup")
+    workflow.add_edge("compile_followup", END)
 
     app = workflow.compile(checkpointer=memory)
 
